@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Зелёный Квадрат · абсолютное движение</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #0c1216;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+        }
+        .game-box {
+            background: #1f2a30;
+            border-radius: 2.8rem;
+            padding: 1.8rem;
+            box-shadow: 0 20px 40px #0f1a1e, 0 0 0 3px #2b554a inset;
+        }
+        canvas {
+            display: block;
+            border-radius: 1.8rem;
+            background: #142026;
+            box-shadow: inset 0 0 30px #1b3333;
+            cursor: none;
+            width: 900px;
+            height: 600px;
+            border: 3px solid #2e5f55;
+        }
+        .panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1.5rem;
+            padding: 0.8rem 2rem;
+            background: #1d2f33;
+            border-radius: 4rem;
+            border: 1px solid #398a78;
+        }
+        .hp {
+            background: #1e423b;
+            padding: 0.5rem 2rem;
+            border-radius: 3rem;
+            color: #bbffdd;
+            font-size: 2.2rem;
+            font-weight: bold;
+            box-shadow: 0 0 15px #4fe0a0;
+        }
+        .ammo {
+            background: #223d3a;
+            padding: 0.5rem 2rem;
+            border-radius: 3rem;
+            color: #ffe693;
+            font-size: 1.6rem;
+            border: 1px dashed #a2e0c0;
+        }
+        .info {
+            color: #b0ddd0;
+            font-size: 1.3rem;
+            margin-top: 1rem;
+            text-align: center;
+            background: #17282e;
+            padding: 0.6rem 1.5rem;
+            border-radius: 3rem;
+        }
+        #statusBar {
+            color: #b0ffc0;
+            font-size: 1.2rem;
+            min-height: 2rem;
+            text-align: center;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+<div class="game-box">
+    <canvas id="canvas" width="900" height="600"></canvas>
+
+    <div class="panel">
+        <div class="hp" id="hpDisplay">10 ❤️</div>
+        <div class="ammo">⚡ ПАТРОНЫ ∞</div>
+    </div>
+    <div class="info">
+        🎮 W A S D – движение   |   МЫШЬ – прицел   |   ЛКМ – стрельба
+    </div>
+    <div id="statusBar">🔹 НАЖМИ WASD – КВАДРАТ ПОЕДЕТ</div>
+</div>
+
+<script>
+// --------------------------------------------------------------
+// ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ КОД
+// ГАРАНТИЯ РАБОТЫ WASD: обработчики на document, preventDefault
+// --------------------------------------------------------------
+
+(function() {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hpElement = document.getElementById('hpDisplay');
+    const statusElement = document.getElementById('statusBar');
+
+    // Размеры
+    const W = 900, H = 600;
+    const SIZE = 30; // игрок
+
+    // --- Игрок ---
+    let player = {
+        x: W/2 - SIZE/2,
+        y: H/2 - SIZE/2,
+        hp: 10
+    };
+
+    // --- Состояние клавиш (проще некуда) ---
+    const keys = {
+        w: false,
+        a: false,
+        s: false,
+        d: false
+    };
+
+    // --- Игровые объекты ---
+    let enemies = [];      // враги
+    let bullets = [];      // пули
+    let medkits = [];      // аптечки
+
+    // --- Мышь ---
+    let mouseX = player.x + SIZE/2;
+    let mouseY = player.y + SIZE/2;
+
+    // Счётчик кадров
+    let frame = 0;
+
+    // ========== ЖЁСТКИЙ ОБРАБОТЧИК КЛАВИШ ==========
+    document.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        
+        // Перехватываем WASD полностью
+        if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+            e.preventDefault(); // ОСТАНАВЛИВАЕМ ЛЮБОЙ СКРОЛЛ
+            e.stopPropagation();
+            
+            // Меняем состояние
+            keys[key] = true;
+            
+            // Показываем что работает
+            const active = [];
+            if (keys.w) active.push('W');
+            if (keys.a) active.push('A');
+            if (keys.s) active.push('S');
+            if (keys.d) active.push('D');
+            
+            if (active.length > 0) {
+                statusElement.innerHTML = '✅ ДВИЖЕНИЕ: ' + active.join(' + ');
+                statusElement.style.color = '#b2ffb2';
+            }
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        const key = e.key.toLowerCase();
+        
+        if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            keys[key] = false;
+            
+            const active = [];
+            if (keys.w) active.push('W');
+            if (keys.a) active.push('A');
+            if (keys.s) active.push('S');
+            if (keys.d) active.push('D');
+            
+            if (active.length > 0) {
+                statusElement.innerHTML = '✅ ДВИЖЕНИЕ: ' + active.join(' + ');
+            } else {
+                statusElement.innerHTML = '⚡ ОЖИДАЮ WASD';
+                statusElement.style.color = '#ffbe76';
+            }
+        }
+    });
+
+    // Чтобы точно ничего не скроллилось
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'w' || e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'W' || e.key === 'A' || e.key === 'S' || e.key === 'D') {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    // ========== МЫШЬ ==========
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        // Вычисляем координаты в пределах canvas
+        let x = (e.clientX - rect.left) * scaleX;
+        let y = (e.clientY - rect.top) * scaleY;
+        
+        // Ограничиваем
+        mouseX = Math.min(W, Math.max(0, x));
+        mouseY = Math.min(H, Math.max(0, y));
+    });
+
+    // ========== СТРЕЛЬБА ==========
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // ЛКМ
+            e.preventDefault();
+            
+            const centerX = player.x + SIZE/2;
+            const centerY = player.y + SIZE/2;
+            
+            const dx = mouseX - centerX;
+            const dy = mouseY - centerY;
+            const length = Math.hypot(dx, dy);
+            
+            if (length > 0.1) {
+                bullets.push({
+                    x: centerX - 4,
+                    y: centerY - 4,
+                    vx: (dx / length) * 9,
+                    vy: (dy / length) * 9,
+                    life: 80
+                });
+            } else {
+                // Если мышь прямо на игроке - стреляем вверх
+                bullets.push({
+                    x: centerX - 4,
+                    y: centerY - 4,
+                    vx: 0,
+                    vy: -9,
+                    life: 80
+                });
+            }
+        }
+    });
+
+    // Запрещаем контекстное меню
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ========== ФУНКЦИИ СПАВНА ==========
+    function spawnEnemy() {
+        let x, y;
+        const r = Math.random();
+        if (r < 0.25) { x = Math.random() * W; y = -40; }
+        else if (r < 0.5) { x = W + 40; y = Math.random() * H; }
+        else if (r < 0.75) { x = Math.random() * W; y = H + 40; }
+        else { x = -40; y = Math.random() * H; }
+        
+        enemies.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 3.2,
+            vy: (Math.random() - 0.5) * 3.2,
+            size: 28
+        });
+    }
+
+    function spawnMedkit() {
+        if (medkits.length < 3) {
+            medkits.push({
+                x: 40 + Math.random() * (W - 80),
+                y: 40 + Math.random() * (H - 80),
+                w: 24, h: 24,
+                life: 350
+            });
+        }
+    }
+
+    // ========== ИГРОВОЙ ЦИКЛ ==========
+    function update() {
+        // ===== ДВИЖЕНИЕ ИГРОКА (WASD) =====
+        let moveX = 0, moveY = 0;
+        
+        if (keys.w) moveY -= 5;
+        if (keys.s) moveY += 5;
+        if (keys.a) moveX -= 5;
+        if (keys.d) moveX += 5;
+        
+        // Коррекция диагонали
+        if (moveX !== 0 && moveY !== 0) {
+            moveX *= 0.707;
+            moveY *= 0.707;
+        }
+        
+        // Применяем
+        player.x += moveX;
+        player.y += moveY;
+        
+        // Границы
+        player.x = Math.max(0, Math.min(W - SIZE, player.x));
+        player.y = Math.max(0, Math.min(H - SIZE, player.y));
+
+        // ===== ВРАГИ =====
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            e.x += e.vx;
+            e.y += e.vy;
+            
+            // Отскоки от стен
+            if (e.x < 0) { e.x = 0; e.vx *= -0.8; }
+            if (e.x + e.size > W) { e.x = W - e.size; e.vx *= -0.8; }
+            if (e.y < 0) { e.y = 0; e.vy *= -0.8; }
+            if (e.y + e.size > H) { e.y = H - e.size; e.vy *= -0.8; }
+            
+            // Столкновение с игроком
+            if (player.x < e.x + e.size &&
+                player.x + SIZE > e.x &&
+                player.y < e.y + e.size &&
+                player.y + SIZE > e.y) {
+                
+                player.hp--;
+                if (player.hp < 0) player.hp = 0;
+                hpElement.innerText = player.hp + ' ❤️';
+                enemies.splice(i, 1);
+                
+                // Смерть -> рестарт
+                if (player.hp <= 0) {
+                    player.hp = 10;
+                    player.x = W/2 - SIZE/2;
+                    player.y = H/2 - SIZE/2;
+                    enemies = [];
+                    bullets = [];
+                    medkits = [];
+                    hpElement.innerText = '10 ❤️';
+                    statusElement.innerHTML = '🔄 ВОЗРОЖДЕНИЕ';
+                }
+            }
+        }
+
+        // ===== ПУЛИ =====
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.x += b.vx;
+            b.y += b.vy;
+            b.life--;
+            
+            if (b.life <= 0 || b.x < -50 || b.x > W + 50 || b.y < -50 || b.y > H + 50) {
+                bullets.splice(i, 1);
+                continue;
+            }
+            
+            // Попадание во врага
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const e = enemies[j];
+                if (b.x + 8 > e.x && b.x < e.x + e.size &&
+                    b.y + 8 > e.y && b.y < e.y + e.size) {
+                    enemies.splice(j, 1);
+                    bullets.splice(i, 1);
+                    break;
+                }
+            }
+        }
+
+        // ===== АПТЕЧКИ =====
+        for (let i = medkits.length - 1; i >= 0; i--) {
+            const m = medkits[i];
+            m.life--;
+            if (m.life <= 0) {
+                medkits.splice(i, 1);
+                continue;
+            }
+            
+            // Подбор
+            if (player.x < m.x + m.w && player.x + SIZE > m.x &&
+                player.y < m.y + m.h && player.y + SIZE > m.y) {
+                if (player.hp < 10) {
+                    player.hp++;
+                    hpElement.innerText = player.hp + ' ❤️';
+                }
+                medkits.splice(i, 1);
+            }
+        }
+
+        // Спавн
+        if (frame % 100 === 0) spawnEnemy();
+        if (frame % 450 === 0) spawnMedkit();
+        
+        frame = (frame + 1) % 1000;
+    }
+
+    // ========== ОТРИСОВКА ==========
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        
+        // Фоновый туман
+        ctx.shadowBlur = 30;
+        
+        // Аптечки
+        for (const m of medkits) {
+            ctx.shadowColor = '#a0ffb0';
+            ctx.fillStyle = '#1e5926';
+            ctx.fillRect(m.x, m.y, m.w, m.h);
+            ctx.fillStyle = '#5aff7a';
+            ctx.fillRect(m.x + 8, m.y + 4, 5, m.h - 8);
+            ctx.fillRect(m.x + 4, m.y + 8, m.w - 8, 5);
+        }
+        
+        // Пули
+        ctx.shadowColor = '#ffd966';
+        for (const b of bullets) {
+            ctx.fillStyle = '#ffe68f';
+            ctx.beginPath();
+            ctx.arc(b.x + 4, b.y + 4, 7, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Враги (треугольники)
+        ctx.shadowColor = '#ff5a5a';
+        for (const e of enemies) {
+            ctx.fillStyle = '#e04e4e';
+            ctx.beginPath();
+            const cx = e.x + e.size/2;
+            const cy = e.y + e.size/2 - 2;
+            ctx.moveTo(cx, cy - e.size/1.5);
+            ctx.lineTo(cx + e.size/1.3, cy + e.size/2.7);
+            ctx.lineTo(cx - e.size/1.3, cy + e.size/2.7);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Игрок (зелёный квадрат)
+        ctx.shadowColor = '#70ff90';
+        ctx.fillStyle = '#3ed96a';
+        ctx.fillRect(player.x, player.y, SIZE, SIZE);
+        ctx.strokeStyle = '#b0ffc0';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(player.x, player.y, SIZE, SIZE);
+        
+        // Прицел (большая точка)
+        ctx.shadowColor = '#ffffff';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 8, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        ctx.shadowBlur = 0;
+    }
+
+    // ========== СТАРТ ==========
+    // Пару врагов сразу
+    spawnEnemy();
+    spawnEnemy();
+    spawnMedkit();
+
+    // Запуск цикла
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+    
+    gameLoop();
+
+    // Финальное сообщение
+    statusElement.innerHTML = '✅ WASD АКТИВНЫ - НАЖИМАЙ';
+})();
+</script>
+</body>
+</html>
